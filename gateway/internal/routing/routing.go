@@ -88,7 +88,7 @@ type Decision struct {
 	UserAPIKey string
 
 	// Slot is the requested ModelSlot label (compiler|planner|
-	// executor|liaison). Echoed for downstream metrics.
+	// executor|liaison|neo). Echoed for downstream metrics.
 	Slot string
 
 	// KindRoute is the executor sub-route label, optional.
@@ -236,7 +236,7 @@ func enforceFreeTier(slot, model string) error {
 // the metering audit has provenance.
 func validSlot(s string) bool {
 	switch s {
-	case types.SlotCompiler, types.SlotPlanner, types.SlotExecutor, types.SlotLiaison:
+	case types.SlotCompiler, types.SlotPlanner, types.SlotExecutor, types.SlotLiaison, types.SlotNeo:
 		return true
 	}
 	return false
@@ -248,6 +248,11 @@ func validSlot(s string) bool {
 func detectProvider(model string) (Provider, error) {
 	switch {
 	case strings.HasPrefix(model, "accounts/fireworks/"):
+		return ProviderFireworks, nil
+	// nomic-ai/* embedding models are Fireworks-hosted but use the bare
+	// vendor/model id on the embeddings API — they must not fall into the
+	// generic '<vendor>/<model>' → Together branch below.
+	case strings.HasPrefix(model, "nomic-ai/"):
 		return ProviderFireworks, nil
 	case strings.Contains(model, "/"):
 		return ProviderTogether, nil

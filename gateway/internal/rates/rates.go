@@ -46,7 +46,17 @@ import (
 // usd_per_mtoken / 11.43 (a uniform /1143 vs v2). Also introduced the
 // DailyFreeTierLimitPax cap (10 PAX/day). Ledger rows priced under v2
 // keep their v2 figures; only v3+ rows use the new amounts.
-const RateTableVersion = 3
+//
+// v4 (2026-06-08) adds glm-5p1-fast to the rate card for the new `neo`
+// slot (Neo's cheap background model: write-back / compaction / summary
+// validation). NOTE: the glm rate below is a PLACEHOLDER mirrored from the
+// deepseek-v4-flash tier — Andrew to replace with the real provider price.
+//
+// v5 (2026-06-10, Andrew approved) adds nomic-embed-text-v1.5 for the `neo`
+// slot: Neo's cortex pager now does real semantic page-faulting through the
+// gateway /v1/embeddings route. Embeddings are input-only (no completion
+// side), so the output rate is 0. USD target $0.008/Mtoken (Fireworks list).
+const RateTableVersion = 5
 
 // PaxUsdReference is the USD price of 1 PAX the v3 rate card was
 // denominated against. Exposed so ops/telemetry can re-derive or
@@ -100,10 +110,14 @@ const (
 	ModelDeepSeekV4Flash  = "accounts/fireworks/models/deepseek-v4-flash"
 	ModelDeepSeekV4Pro    = "accounts/fireworks/models/deepseek-v4-pro"
 	ModelKimiK26          = "accounts/fireworks/routers/kimi-k2p6-fast"
+	ModelGLM5p1Fast       = "accounts/fireworks/routers/glm-5p1-fast"
 	ModelGPTOSS120B       = "accounts/fireworks/models/gpt-oss-120b"
 	ModelGPTOSS20B        = "accounts/fireworks/models/gpt-oss-20b"
 	ModelQwenCoder        = "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8"
 	ModelLlama405B        = "meta-llama/Llama-3.1-405B-Instruct"
+	// ModelNomicEmbed is the Fireworks-hosted embedding model behind the
+	// gateway's /v1/embeddings route (768-dim; matches cortex DefaultDim).
+	ModelNomicEmbed = "nomic-ai/nomic-embed-text-v1.5"
 )
 
 // Rate is the per-Mtoken price in PAX for a single model. Both prompt
@@ -174,6 +188,20 @@ var rateTable = []Rate{
 		OutputPaxPerMTokens: 0.139982502, // ≈ $1.60 / Mtoken
 		Notes:               "Fireworks kimi-k2.6 — v1 executor upgrade (general agentic + prose)",
 	},
+	{
+		Model:               ModelGLM5p1Fast,
+		Group:               GroupSummarize,
+		InputPaxPerMTokens:  0.026246719, // ≈ $0.30 / Mtoken  [PLACEHOLDER — Andrew to set real glm-5.1 rate]
+		OutputPaxPerMTokens: 0.078740157, // ≈ $0.90 / Mtoken  [PLACEHOLDER — Andrew to set real glm-5.1 rate]
+		Notes:               "Fireworks glm-5p1-fast — Neo's cheap background model (write-back/compaction/validation). PLACEHOLDER rate (deepseek-v4-flash tier) pending real provider price.",
+	},
+	{
+		Model:               ModelNomicEmbed,
+		Group:               GroupOther,
+		InputPaxPerMTokens:  0.000699912, // ≈ $0.008 / Mtoken (Fireworks list)
+		OutputPaxPerMTokens: 0,           // embeddings have no completion side
+		Notes:               "Fireworks nomic-embed-text-v1.5 — Neo cortex semantic page-faulting via gateway /v1/embeddings (768-dim).",
+	},
 }
 
 // rateIndex maps model id -> Rate. Initialised once at package load.
@@ -230,6 +258,14 @@ func FreeTierWhitelist() map[string][]string {
 		// default (1M context for folding large event batches); kimi-k2.6 is
 		// the warmer-prose upgrade, pinned via MATRIX_LIAISON_MODEL.
 		"liaison": {ModelDeepSeekV4Flash, ModelKimiK26, ModelDeepSeekV4Pro},
+		// neo: the Neo default conversational AGENT (SlotNeo). NOT the
+		// Liaison — Neo drives the conversation + tools and delegates money
+		// to MCL. main = kimi-k2.6 (already priced; shared with executor/
+		// planner/liaison); cheap = glm-5p1-fast (background write-back/
+		// compaction/validation), added to the rate card in v4. v5 adds
+		// nomic-embed-text-v1.5 so Neo's cortex pager can page-fault
+		// semantically through the metered /v1/embeddings route.
+		"neo": {ModelKimiK26, ModelGLM5p1Fast, ModelNomicEmbed},
 	}
 }
 
